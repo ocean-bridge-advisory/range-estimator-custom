@@ -6,26 +6,16 @@
   <title>EV Range Estimator · Ocean Bridge Advisory</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/recharts/2.12.7/Recharts.min.js"></script>
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
     body { margin: 0; background: #0a0a0b; }
     .mono { font-family: 'JetBrains Mono', 'Fira Mono', monospace; }
-    [type=number]::-webkit-inner-spin-button,
-    [type=number]::-webkit-outer-spin-button { -webkit-appearance: none; }
   </style>
 </head>
 <body>
   <div id="root"></div>
   <script>
-const {
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  ResponsiveContainer,
-  Tooltip
-} = Recharts;
+// Inline SVG icons
 const Minus = ({
   size = 16,
   strokeWidth = 2,
@@ -160,6 +150,89 @@ const Gauge = ({
   cy: "12",
   r: "2"
 }));
+
+// Lightweight canvas speed chart — no external deps
+function SpeedChart({
+  data,
+  color
+}) {
+  const canvasRef = useRef(null);
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const dpr = window.devicePixelRatio || 1;
+    const W = canvas.offsetWidth,
+      H = canvas.offsetHeight;
+    canvas.width = W * dpr;
+    canvas.height = H * dpr;
+    const ctx = canvas.getContext('2d');
+    ctx.scale(dpr, dpr);
+    ctx.clearRect(0, 0, W, H);
+    if (!data || data.length < 2) return;
+    const maxV = Math.max(...data.map(d => d.kmh), 1);
+    const maxT = data[data.length - 1].t;
+    const padL = 28,
+      padR = 6,
+      padT = 6,
+      padB = 18;
+    const cW = W - padL - padR,
+      cH = H - padT - padB;
+    // axes
+    ctx.strokeStyle = '#27272a';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(padL, padT);
+    ctx.lineTo(padL, padT + cH);
+    ctx.lineTo(padL + cW, padT + cH);
+    ctx.stroke();
+    // y ticks
+    ctx.fillStyle = '#52525b';
+    ctx.font = '9px monospace';
+    ctx.textAlign = 'right';
+    [0, 0.5, 1].forEach(f => {
+      const y = padT + cH - f * cH,
+        v = Math.round(f * maxV);
+      ctx.fillText(v, padL - 3, y + 3);
+      ctx.strokeStyle = '#27272a80';
+      ctx.beginPath();
+      ctx.moveTo(padL, y);
+      ctx.lineTo(padL + cW, y);
+      ctx.stroke();
+    });
+    // x ticks
+    ctx.textAlign = 'center';
+    ctx.strokeStyle = '#27272a';
+    [0, 0.25, 0.5, 0.75, 1].forEach(f => {
+      const x = padL + f * cW,
+        t = Math.round(f * maxT);
+      ctx.fillText(t + 's', x, padT + cH + 12);
+    });
+    // line
+    ctx.beginPath();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1.5;
+    data.forEach((d, i) => {
+      const x = padL + d.t / maxT * cW,
+        y = padT + cH - d.kmh / maxV * cH;
+      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+    // fill
+    ctx.lineTo(padL + data[data.length - 1].t / maxT * cW, padT + cH);
+    ctx.lineTo(padL, padT + cH);
+    ctx.closePath();
+    ctx.fillStyle = color + '18';
+    ctx.fill();
+  }, [data, color]);
+  return React.createElement('canvas', {
+    ref: canvasRef,
+    style: {
+      width: '100%',
+      height: '150px',
+      display: 'block'
+    }
+  });
+}
 const {
   useState,
   useMemo,
@@ -727,55 +800,10 @@ function App() {
     style: {
       background: traceSel === s ? STD[s].color : "transparent"
     }
-  }, STD[s].label)))), /*#__PURE__*/React.createElement(ResponsiveContainer, {
-    width: "100%",
-    height: 150
-  }, /*#__PURE__*/React.createElement(LineChart, {
+  }, STD[s].label)))), /*#__PURE__*/React.createElement(SpeedChart, {
     data: chartData,
-    margin: {
-      top: 4,
-      right: 4,
-      left: -20,
-      bottom: 0
-    }
-  }, /*#__PURE__*/React.createElement(XAxis, {
-    dataKey: "t",
-    tick: {
-      fontSize: 9,
-      fill: "#52525b"
-    },
-    tickLine: false,
-    axisLine: {
-      stroke: "#27272a"
-    }
-  }), /*#__PURE__*/React.createElement(YAxis, {
-    tick: {
-      fontSize: 9,
-      fill: "#52525b"
-    },
-    tickLine: false,
-    axisLine: {
-      stroke: "#27272a"
-    }
-  }), /*#__PURE__*/React.createElement(Tooltip, {
-    contentStyle: {
-      background: "#18181b",
-      border: "1px solid #3f3f46",
-      borderRadius: 6,
-      fontSize: 11
-    },
-    labelStyle: {
-      color: "#a1a1aa"
-    },
-    formatter: v => [`${v} km/h`, "speed"],
-    labelFormatter: t => `${t}s`
-  }), /*#__PURE__*/React.createElement(Line, {
-    type: "monotone",
-    dataKey: "kmh",
-    stroke: STD[traceSel].color,
-    strokeWidth: 1.3,
-    dot: false
-  }))), /*#__PURE__*/React.createElement("div", {
+    color: STD[traceSel].color
+  }), /*#__PURE__*/React.createElement("div", {
     className: "mono text-[10px] text-zinc-600 mt-1 text-center"
   }, traceSel === "CUSTOM" && customCyc ? `${customCyc.name} · ${fmt(bd.distKm, 2)} km · ${activeTrace.length}s · resampled from ${customCyc.origLen} pts @ ${customCyc.dt}s` : `${fmt(bd.distKm, 2)} km · ${activeTrace.length}s · ${STD[traceSel].sub}`)), /*#__PURE__*/React.createElement("div", {
     className: "rounded-lg border border-zinc-800 bg-zinc-900/40 p-4"
@@ -996,8 +1024,8 @@ function App() {
     className: "text-[10px] text-zinc-600 leading-relaxed px-1"
   }, "Tap a standard card to toggle it. Pin a baseline (\u25E7) to see live \xB1 deltas as you step values. UDDS/HWFET: NREL FASTSim. WLTC-3b/NEDC: UNECE GTR-15. CLTC-P: reconstructed to GB/T 38146.1 statistics.")))));
 }
-    const root = ReactDOM.createRoot(document.getElementById('root'));
-    root.render(React.createElement(App));
+    const domRoot = ReactDOM.createRoot(document.getElementById('root'));
+    domRoot.render(React.createElement(App));
   </script>
 </body>
 </html>
